@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FRPC 管理面板</title>
+
+    <!-- 本地资源 -->
+    <script src="assets/vue.global.min.js"></script>
+    <link rel="stylesheet" href="assets/index.min.css" />
+    <script src="assets/index.full.min.js"></script>
+    <script src="assets/icons-global.min.js"></script>
+    <script src="assets/axios.min.js"></script>
+    <link rel="stylesheet" href="assets/animate.min.css" />
+    <script src="assets/ansi_up.min.js"></script>
+
+    <script>
+        // 调试检查
+        window.onload = function () {
+            if (window.location.protocol === 'file:') {
+                console.warn('Running via file protocol. API calls will fail.');
+                // 我们不在这里弹出警告，因为我们希望 UI 至少能渲染出来
+            }
+            if (typeof Vue === 'undefined') {
+                alert('Error: Vue.js failed to load. Please check if "assets/vue.global.min.js" exists.');
+            }
+            if (typeof ElementPlus === 'undefined') {
+                alert('Error: Element Plus failed to load. Please check if "assets/index.full.min.js" exists.');
+            }
+        };
+    </script>
+
+    <style>
+        :root {
+            --el-color-primary: #409EFF;
+            --bg-color: #f5f7fa;
+            --sidebar-width: 260px;
+            --header-height: 60px;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', '微软雅黑', Arial, sans-serif;
+            background-color: var(--bg-color);
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #app {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+            height: calc(100vh - var(--header-height));
+        }
+
+        /* 头部 */
+        .app-header {
+            height: var(--header-height);
+            background-color: #fff;
+            border-bottom: 1px solid #dcdfe6;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-shadow: 0 1px 4px rgba(0, 21, 41, .08);
+            z-index: 10;
+        }
+
+        .brand {
+            font-size: 20px;
+            font-weight: 600;
+            color: #303133;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: var(--sidebar-width);
+            background-color: #fff;
+            border-right: 1px solid #dcdfe6;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .config-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .config-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 15px;
+            margin-bottom: 8px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            color: #606266;
+            border: 1px solid transparent;
+        }
+
+        .config-item:hover {
+            background-color: #f5f7fa;
+        }
+
+        .config-item.active {
+            background-color: #ecf5ff;
+            color: var(--el-color-primary);
+            border-color: #d9ecff;
+        }
+
+        .config-item.running .config-name {
+            font-weight: bold;
+        }
+
+        .config-name {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .sidebar-footer {
+            padding: 15px;
+            border-top: 1px solid #ebeef5;
+        }
+
+        /* 主内容区 */
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #fff;
+            margin: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        .content-header {
+            padding: 10px 20px;
+            border-bottom: 1px solid #ebeef5;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 50px;
+        }
+
+        .editor-wrapper {
+            flex: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .editor {
+            flex: 1;
+            width: 100%;
+            border: none;
+            padding: 20px;
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            background-color: #282c34;
+            color: #abb2bf;
+            resize: none;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .logs-view {
+            flex: 1;
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        /* 状态栏 */
+        .status-bar {
+            width: 280px;
+            background-color: #fff;
+            border-left: 1px solid #dcdfe6;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            border: 1px solid #ebeef5;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #606266;
+        }
+
+        .status-item:last-child {
+            margin-bottom: 0;
+        }
+
+        .status-value {
+            font-weight: 500;
+            color: #303133;
+        }
+
+        /* 响应式 */
+        @media (max-width: 1024px) {
+            .main-layout {
+                flex-direction: column;
+                height: auto;
+                overflow-y: auto;
+            }
+
+            .sidebar {
+                width: 100%;
+                height: 200px;
+                border-right: none;
+                border-bottom: 1px solid #dcdfe6;
+            }
+
+            .content-area {
+                height: 500px;
+                margin: 10px;
+            }
+
+            .status-bar {
+                width: 100%;
+                border-left: none;
+                border-top: 1px solid #dcdfe6;
+            }
+
+            body {
+                overflow-y: auto;
+            }
+        }
+
+        /* 深色主题的 ANSI 颜色 */
+        .ansi-black-fg {
+            color: #6272a4;
+        }
+
+        .ansi-red-fg {
+            color: #ff5555;
+        }
+
+        .ansi-green-fg {
+            color: #50fa7b;
+        }
+
+        .ansi-yellow-fg {
+            color: #f1fa8c;
+        }
+
+        .ansi-blue-fg {
+            color: #8be9fd;
+        }
+
+        /* Lighter blue */
+        .ansi-magenta-fg {
+            color: #ff79c6;
+        }
+
+        .ansi-cyan-fg {
+            color: #8be9fd;
+        }
+
+        .ansi-white-fg {
+            color: #f8f8f2;
+        }
+
+        .ansi-bright-black-fg {
+            color: #6272a4;
+        }
+
+        .ansi-bright-red-fg {
+            color: #ff6e6e;
+        }
+
+        .ansi-bright-green-fg {
+            color: #69ff94;
+        }
+
+        .ansi-bright-yellow-fg {
+            color: #ffffa5;
+        }
+
+        .ansi-bright-blue-fg {
+            color: #d6acff;
+        }
+
+        .ansi-bright-magenta-fg {
+            color: #ff92d0;
+        }
+
+        .ansi-bright-cyan-fg {
+            color: #a4ffff;
+        }
+
+        .ansi-bright-white-fg {
+            color: #ffffff;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app">
+        <!-- 头部 -->
+        <header class="app-header">
+            <div class="brand">
+                <el-icon size="24" color="#409EFF">
+                    <Connection />
+                </el-icon>
+                <span style="margin-left: 10px;">FRPC 管理面板</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <el-tag :type="status === 'running' ? 'success' : 'danger'" effect="dark" round>
+                    {{ status === 'running' ? '运行中' : '已停止' }}
+                </el-tag>
+            </div>
+        </header>
+
+        <div class="main-layout">
+            <!-- 侧边栏：配置列表 -->
+            <aside class="sidebar">
+                <div style="padding: 15px 15px 5px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                        <span style="font-weight: bold; color: #909399; font-size: 12px;">配置文件列表</span>
+                        <el-button type="primary" link icon="Plus" @click="showCreateDialog = true"
+                            size="small">新建</el-button>
+                    </div>
+                </div>
+                <div class="config-list">
+                    <div v-for="conf in configList" :key="conf" class="config-item"
+                        :class="{ 'active': currentEditingConfig === conf, 'running': activeConfig === conf }"
+                        @click="selectConfig(conf)">
+                        <div class="config-name">
+                            <el-icon v-if="activeConfig === conf" color="#67C23A"><Video-Play /></el-icon>
+                            <el-icon v-else>
+                                <Document />
+                            </el-icon>
+                            {{ conf }}
+                        </div>
+                        <el-tag v-if="activeConfig === conf" size="small" type="success" effect="plain">Active</el-tag>
+                    </div>
+                </div>
+            </aside>
+
+            <!-- 主内容区：编辑器和日志 -->
+            <main class="content-area">
+                <div class="content-header">
+                    <el-radio-group v-model="activeTab" size="small">
+                        <el-radio-button label="editor">
+                            <el-icon style="margin-right: 4px;">
+                                <Edit />
+                            </el-icon> 编辑配置
+                        </el-radio-button>
+                        <el-radio-button label="logs">
+
+                            <el-icon style="margin-right: 4px;">
+                                <List />
+                            </el-icon> 运行日志
+                        </el-radio-button>
+                    </el-radio-group>
+
+                    <div v-if="activeTab === 'editor'">
+                        <el-button type="danger" @click="deleteConfig" icon="Delete" plain round
+                            style="margin-right: 10px;">删除</el-button>
+                        <el-button type="primary" @click="saveConfig" :loading="saving" icon="Check"
+                            round>保存配置</el-button>
+                    </div>
+                    <div v-if="activeTab === 'logs'">
+                        <el-button type="primary" @click="fetchLogs" :loading="loadingLogs" icon="Refresh"
+                            round>刷新日志</el-button>
+                    </div>
+                </div>
+
+                <div class="editor-wrapper">
+                    <div v-if="activeTab === 'editor'" style="height: 100%; display: flex; flex-direction: column;">
+                        <div style="padding: 8px 20px; background: #f0f2f5; font-size: 12px; color: #909399;">
+                            当前编辑: <strong>{{ currentEditingConfig }}</strong>
+                        </div>
+                        <textarea class="editor" v-model="configContent" spellcheck="false"
+                            placeholder="在此处输入 FRPC 配置 (TOML 格式)..."></textarea>
+                    </div>
+                    <div v-else class="logs-view" ref="logsRef" v-html="logsContent || '暂无日志...'"></div>
+                </div>
+            </main>
+
+            <!-- 右侧边栏：控制和状态 -->
+            <aside class="status-bar">
+                <div style="margin-bottom: 20px;">
+                    <h4 style="margin: 0 0 15px 0; color: #303133;">操作控制</h4>
+                    <el-button v-if="status === 'running'" type="danger" @click="stopService"
+                        style="width: 100%; margin-bottom: 10px;" icon="SwitchButton" plain>
+                        停止服务
+                    </el-button>
+
+                    <el-button type="success" @click="runConfig"
+                        :disabled="currentEditingConfig === activeConfig && status === 'running'"
+                        style="width: 100%; margin-left: 0;" icon="VideoPlay">
+                        运行当前配置
+                    </el-button>
+
+                    <p style="font-size: 12px; color: #909399; margin-top: 10px; line-height: 1.5;">
+                        <el-icon><Info-Filled /></el-icon> 点击"运行"将重启 FRPC 并应用当前选中的配置。
+                    </p>
+                </div>
+
+                <div class="status-card">
+                    <h4 style="margin: 0 0 15px 0; font-size: 14px;">系统状态</h4>
+                    <div class="status-item">
+                        <span>进程状态</span>
+                        <span class="status-value" :style="{ color: status === 'running' ? '#67C23A' : '#F56C6C' }">
+                            {{ status === 'running' ? '运行中' : '已停止' }}
+                        </span>
+                    </div>
+                    <div class="status-item">
+                        <span>PID</span>
+                        <span class="status-value">{{ pid || '-' }}</span>
+                    </div>
+                    <div class="status-item">
+                        <span>当前配置</span>
+                        <span class="status-value"
+                            style="max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                            :title="activeConfig">
+                            {{ activeConfig || '-' }}
+                        </span>
+                    </div>
+                </div>
+
+                <transition name="el-fade-in">
+                    <el-alert v-if="errorInfo" title="错误信息" type="error" :description="errorInfo" show-icon
+                        :closable="false" style="word-break: break-all;"></el-alert>
+                </transition>
+            </aside>
+        </div>
+
+        <!-- 新建配置对话框 -->
+        <el-dialog v-model="showCreateDialog" title="新建配置文件" width="400px">
+            <el-form @submit.prevent="createConfig">
+                <el-form-item label="文件名">
+                    <el-input v-model="newConfigName" placeholder="例如: my-config">
+                        <template #append>.toml</template>
+                    </el-input>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <span class="dialog-footer">
+                    <el-button @click="showCreateDialog = false">取消</el-button>
+                    <el-button type="primary" @click="createConfig">创建</el-button>
+                </span>
+            </template>
+        </el-dialog>
+    </div>
+
+    <script>
+        const { createApp, ref, onMounted, nextTick } = Vue;
+        const { ElMessage } = ElementPlus;
+
+        const app = createApp({
+            setup() {
+                const status = ref('stopped');
+                const pid = ref(null);
+                const activeConfig = ref('');
+                const configList = ref([]);
+                const currentEditingConfig = ref('');
+                const configContent = ref('');
+                const logsContent = ref('');
+                const loading = ref(false);
+                const saving = ref(false);
+                const loadingLogs = ref(false);
+                const showCreateDialog = ref(false);
+                const newConfigName = ref('');
+                const activeTab = ref('editor');
+                const errorInfo = ref('');
+                const logsRef = ref(null);
+                const ansi_up = new AnsiUp();
+                ansi_up.use_classes = true;
+
+                // API 基础 URL（相对路径为空）
+                const API_BASE = '';
+
+                const checkStatus = async () => {
+                    loading.value = true;
+                    try {
+                        const res = await axios.get(`${API_BASE}/api/status`);
+                        status.value = res.data.status;
+                        pid.value = res.data.pid;
+                        activeConfig.value = res.data.active_config;
+                        if (res.data.error) {
+                            errorInfo.value = res.data.error;
+                        } else {
+                            errorInfo.value = '';
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error('获取状态失败');
+                    } finally {
+                        loading.value = false;
+                    }
+                };
+
+                const fetchConfigList = async () => {
+                    try {
+                        const res = await axios.get(`${API_BASE}/api/configs`);
+                        configList.value = res.data.configs;
+                        // 如果没有选中配置，则选中活动的或第一个
+                        if (!currentEditingConfig.value) {
+                            if (activeConfig.value && configList.value.includes(activeConfig.value)) {
+                                selectConfig(activeConfig.value);
+                            } else if (configList.value.length > 0) {
+                                selectConfig(configList.value[0]);
+                            }
+                        }
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error('获取配置列表失败');
+                    }
+                };
+
+                const selectConfig = async (filename) => {
+                    currentEditingConfig.value = filename;
+                    try {
+                        const res = await axios.get(`${API_BASE}/api/config`, { params: { filename } });
+                        configContent.value = res.data.content;
+                        activeTab.value = 'editor';
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error(`读取配置 ${filename} 失败`);
+                    }
+                };
+
+                const saveConfig = async () => {
+                    if (!currentEditingConfig.value) return;
+                    saving.value = true;
+                    try {
+                        await axios.post(`${API_BASE}/api/config`, {
+                            filename: currentEditingConfig.value,
+                            content: configContent.value
+                        });
+                        ElMessage.success('保存成功');
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error('保存失败');
+                    } finally {
+                        saving.value = false;
+                    }
+                };
+
+                const createConfig = async () => {
+                    if (!newConfigName.value) {
+                        ElMessage.warning('请输入文件名');
+                        return;
+                    }
+                    const filename = newConfigName.value.endsWith('.toml') ? newConfigName.value : `${newConfigName.value}.toml`;
+                    try {
+                        await axios.post(`${API_BASE}/api/configs`, {
+                            filename: filename
+                        });
+                        ElMessage.success('创建成功');
+                        showCreateDialog.value = false;
+                        newConfigName.value = '';
+                        await fetchConfigList();
+                        selectConfig(filename);
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error(error.response?.data?.detail || '创建失败');
+                    }
+                };
+
+                const deleteConfig = async () => {
+                    if (!currentEditingConfig.value) return;
+
+                    try {
+                        await ElementPlus.ElMessageBox.confirm(
+                            `确定要删除配置文件 ${currentEditingConfig.value} 吗？`,
+                            '警告',
+                            {
+                                confirmButtonText: '确定',
+                                cancelButtonText: '取消',
+                                type: 'warning',
+                            }
+                        );
+
+                        await axios.delete(`${API_BASE}/api/config`, { params: { filename: currentEditingConfig.value } });
+                        ElMessage.success('删除成功');
+
+                        // 刷新列表
+                        await fetchConfigList();
+                        // 如果还有配置，选中第一个；否则清空
+                        if (configList.value.length > 0) {
+                            // 如果删除的不是当前选中的（虽然逻辑上应该是），或者为了保险起见，重新选中第一个
+                            selectConfig(configList.value[0]);
+                        } else {
+                            currentEditingConfig.value = '';
+                            configContent.value = '';
+                        }
+
+                    } catch (error) {
+                        if (error !== 'cancel') {
+                            console.error(error);
+                            ElMessage.error(error.response?.data?.detail || '删除失败');
+                        }
+                    }
+                };
+
+                const runConfig = async () => {
+                    if (!currentEditingConfig.value) return;
+                    try {
+                        await axios.post(`${API_BASE}/api/run`, {
+                            filename: currentEditingConfig.value
+                        });
+                        ElMessage.success(`正在启动 ${currentEditingConfig.value}...`);
+                        // 稍等片刻然后检查状态
+                        setTimeout(checkStatus, 1000);
+                        setTimeout(fetchLogs, 1500);
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error('启动失败');
+                    }
+                };
+
+                const stopService = async () => {
+                    try {
+                        await axios.post(`${API_BASE}/api/stop`);
+                        ElMessage.success('服务已停止');
+                        setTimeout(checkStatus, 1000);
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error('停止服务失败');
+                    }
+                };
+
+                const fetchLogs = async () => {
+                    loadingLogs.value = true;
+                    try {
+                        const res = await axios.get(`${API_BASE}/api/logs`);
+                        // 将 ANSI 转换为 HTML
+                        const html = ansi_up.ansi_to_html(res.data.logs);
+                        logsContent.value = html;
+
+                        // 自动滚动到底部
+                        nextTick(() => {
+                            if (logsRef.value) {
+                                logsRef.value.scrollTop = logsRef.value.scrollHeight;
+                            }
+                        });
+                    } catch (error) {
+                        console.error(error);
+                        ElMessage.error('获取日志失败');
+                    } finally {
+                        loadingLogs.value = false;
+                    }
+                };
+
+                onMounted(async () => {
+                    await checkStatus();
+                    await fetchConfigList();
+                    // 每 5 秒轮询一次状态
+                    setInterval(checkStatus, 5000);
+                });
+
+                return {
+                    status, pid, activeConfig, configList, currentEditingConfig,
+                    configContent, logsContent, loading, saving, loadingLogs,
+                    showCreateDialog, newConfigName, activeTab, errorInfo, logsRef,
+                    checkStatus, selectConfig, saveConfig, createConfig, deleteConfig, runConfig,
+                    stopService, fetchLogs
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        if (typeof ElementPlusIconsVue !== 'undefined') {
+            for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+                app.component(key, component);
+            }
+        } else {
+            console.warn('ElementPlusIconsVue is not defined. Icons will not render.');
+        }
+        app.mount('#app');
+    </script>
+</body>
+
+</html>
