@@ -6,7 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y curl tar && rm -rf /var/lib/apt/lists/*
 
 # 2. Set FRP Version
-ARG FRP_VERSION=0.61.0
+ARG FRP_VERSION=0.65.0
 
 # 3. Auto-detect architecture and download corresponding frpc
 RUN ARCH=$(uname -m) && \
