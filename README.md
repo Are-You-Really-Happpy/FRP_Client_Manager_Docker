@@ -15,7 +15,7 @@
 
 ```bash
 git clone https://github.com/Are-You-Really-Happpy/FRP_Client_Manager_Docker
-cd frp
+cd FRP_Client_Manager_Docker
 ```
 
 ### 2. 构建镜像
