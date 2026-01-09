@@ -28,23 +28,36 @@ frpc_process = None
 # 管理员认证设置
 ADMIN_USERNAME = "admin"
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+PASSWORD_FILE = os.path.join(CONFIG_DIR, "admin_password.txt")
 
 if not ADMIN_PASSWORD:
+    # 尝试从文件读取已保存的密码
+    if os.path.exists(PASSWORD_FILE):
+        try:
+            with open(PASSWORD_FILE, "r") as f:
+                for line in f:
+                    if line.startswith("Password: "):
+                        ADMIN_PASSWORD = line.replace("Password: ", "").strip()
+                        break
+        except Exception as e:
+            print(f"Warning: Failed to read password from file: {e}")
+
+if not ADMIN_PASSWORD:
+    # 如果没有环境变量也没有通过文件找到密码，则生成新的
     alphabet = string.ascii_letters + string.digits
     ADMIN_PASSWORD = ''.join(secrets.choice(alphabet) for i in range(16))
     print(f"\n{'='*50}")
-    print(f"Admin Authentication Credentials:")
+    print(f"Admin Authentication Credentials (NEWLY GENERATED):")
     print(f"Username: {ADMIN_USERNAME}")
     print(f"Password: {ADMIN_PASSWORD}")
     print(f"{'='*50}\n")
 
-# 将密码保存到文件
-PASSWORD_FILE = os.path.join(CONFIG_DIR, "admin_password.txt")
-try:
-    with open(PASSWORD_FILE, "w") as f:
-        f.write(f"Username: {ADMIN_USERNAME}\nPassword: {ADMIN_PASSWORD}\n")
-except Exception as e:
-    print(f"Warning: Failed to save password to file: {e}")
+    # 保存新生成的密码
+    try:
+        with open(PASSWORD_FILE, "w") as f:
+            f.write(f"Username: {ADMIN_USERNAME}\nPassword: {ADMIN_PASSWORD}\n")
+    except Exception as e:
+        print(f"Warning: Failed to save password to file: {e}")
 
 security = HTTPBasic()
 
